@@ -1,7 +1,7 @@
 import os
 import random
-import subprocess
 import sys
+import traceback
 from functools import lru_cache
 from pathlib import Path
 
@@ -86,13 +86,6 @@ def code_from_openai(request: str) -> str:
                 "OPENAI_API_KEY=your_real_key_here"
             ) from e
 
-        # Optional: stop on quota/billing issues too (uncomment if you want)
-        # if "insufficient_quota" in msg or "quota" in msg or "billing" in msg:
-        #     raise SystemExit(
-        #         "❌ No available quota / billing issue.\n"
-        #         "Check your OpenAI plan/billing and try again."
-        #     ) from e
-
         raise
 
     content = resp.choices[0].message.content or ""
@@ -107,14 +100,21 @@ def get_program() -> str:
     return user_input if user_input else random.choice(PROGRAMS_LIST)
 
 
-def run_generated_file(file_name: str):
+def run_generated_code(code: str) -> tuple[bool, str]:
     """
-    Run the generated file.
-    - In dev: uses "python"
-    - In PyInstaller: uses the running executable path (sys.executable)
+    Execute the generated code in-process (works in both .py and .exe).
+    Returns (success, error_message).
+
+    This avoids trying to call "python" from a bundled EXE (which may not exist),
+    and avoids re-running the EXE recursively via sys.executable.
     """
-    python_exe = sys.executable if getattr(sys, "frozen", False) else "python"
-    return subprocess.run([python_exe, file_name], capture_output=True, text=True)
+    try:
+        compiled = compile(code, "code_generate.py", "exec")
+        exec_globals = {"__name__": "__main__"}
+        exec(compiled, exec_globals)
+        return True, ""
+    except Exception:
+        return False, traceback.format_exc()
 
 
 def main():
@@ -145,7 +145,6 @@ def main():
         try:
             run_code = code_from_openai(request)
         except SystemExit:
-            # For invalid key (or other fatal exits), stop immediately.
             raise
         except Exception as e:
             errors.append(str(e))
@@ -154,12 +153,13 @@ def main():
 
         print(f"{Fore.BLUE}Generated code:\n{run_code}{Fore.RESET}")
 
+        # Write the raw code first (useful even if execution fails)
         with open(file_name, "w", encoding="utf-8") as f:
             f.write(run_code)
 
-        result = run_generated_file(file_name)
+        ok, err = run_generated_code(run_code)
 
-        if result.returncode == 0:
+        if ok:
             print(f"{Fore.GREEN}Code creation completed successfully!{Fore.RESET}")
 
             formatted_code = black.format_file_contents(run_code, fast=False, mode=black.FileMode())
@@ -173,8 +173,8 @@ def main():
                 pass
             break
         else:
-            errors.append(result.stderr)
-            print(f"{Fore.RED}Error running generated code:\n{result.stderr}{Fore.RESET}")
+            errors.append(err)
+            print(f"{Fore.RED}Error running generated code:\n{err}{Fore.RESET}")
             try:
                 os.remove(file_name)
             except FileNotFoundError:
@@ -184,5 +184,23 @@ def main():
         print(f"{Fore.RED}Code generation FAILED after 5 attempts.{Fore.RESET}")
 
 
+def pause_if_frozen():
+    """
+    When running as a built .exe, keep the console window open so the user can read errors.
+    """
+    if getattr(sys, "frozen", False):
+        input("\nPress Enter to close...")
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as e:
+        if str(e):
+            print(f"\n{Fore.RED}{e}{Fore.RESET}")
+        pause_if_frozen()
+        raise
+    except Exception as e:
+        print(f"\n{Fore.RED}Unexpected error: {e}{Fore.RESET}")
+        pause_if_frozen()
+        raise
