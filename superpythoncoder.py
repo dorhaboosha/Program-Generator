@@ -18,7 +18,7 @@ from pathlib import Path
 import black
 from colorama import Fore
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AuthenticationError, OpenAI
 
 
 def load_env():
@@ -87,20 +87,18 @@ def code_from_openai(request: str) -> str:
             ],
             temperature=0.4,
         )
-    except Exception as e:
-        msg = str(e).lower()
-
-        # Stop immediately on auth/key issues
-        if "401" in msg or "invalid_api_key" in msg or "incorrect api key" in msg:
-            raise SystemExit(
-                "❌ Invalid OPENAI_API_KEY (401).\n"
-                "Fix your .env file and try again.\n"
-                "Example:\n"
-                "OPENAI_API_KEY=your_real_key_here"
-            ) from e
-
+    except AuthenticationError as e:
+        raise SystemExit(
+            "❌ Invalid OPENAI_API_KEY (401).\n"
+            "Fix your .env file and try again.\n"
+            "Example:\n"
+            "OPENAI_API_KEY=your_real_key_here"
+        ) from e
+    except Exception:
         raise
 
+    if not resp.choices:
+        raise ValueError("OpenAI returned no choices (possibly filtered).")
     content = resp.choices[0].message.content or ""
     parts = content.split("@@D")
     if len(parts) < 3:
@@ -186,6 +184,10 @@ def main():
                 formatted_code = black.format_file_contents(run_code, fast=False, mode=black.FileMode())
             except black.NothingChanged:
                 formatted_code = run_code
+            except Exception as e:
+                # e.g. black.InvalidInput when generated code has syntax issues
+                formatted_code = run_code
+                print(f"{Fore.YELLOW}Formatting failed, saving unformatted: {e}{Fore.RESET}")
             with open(file_name, "w", encoding="utf-8") as f:
                 f.write(formatted_code)
 
