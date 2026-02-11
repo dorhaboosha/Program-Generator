@@ -1,3 +1,13 @@
+"""
+Super Python Coder — generate and run Python programs via OpenAI.
+
+This script prompts for a program description (or picks a random example),
+calls the OpenAI API to generate Python code, runs it in-process, and
+optionally retries with error feedback. Successful code is written to
+`code_generate.py`, formatted with Black, and opened (on Windows).
+Requires OPENAI_API_KEY in a .env file next to the script or executable.
+"""
+
 import os
 import random
 import sys
@@ -22,8 +32,10 @@ def load_env():
 
 load_env()
 
-MODEL = "gpt-4o-mini"  # safer than gpt-3.5-turbo
+# OpenAI model used for code generation (gpt-4o-mini is cheaper and reliable).
+MODEL = "gpt-4o-mini"
 
+# Example program descriptions shown when the user presses Enter without typing.
 PROGRAMS_LIST = [
     """Given two strings str1 and str2, prints all interleavings of the given
 two strings. You may assume that all characters in both strings are
@@ -34,6 +46,7 @@ different. Input: str1 = "AB", str2 = "CD" ...""",
     "A program that calculate the GCD of two numbers",
 ]
 
+# Instructions sent to the model so it returns only code wrapped in @@D markers.
 SYSTEM_PROMPT = (
     "You are a Python developer. Output ONLY Python code.\n"
     "Include assert-based tests (at least 5 different test cases).\n"
@@ -96,6 +109,9 @@ def code_from_openai(request: str) -> str:
 
 
 def get_program() -> str:
+    """
+    Ask the user for a program description; if empty, return a random item from PROGRAMS_LIST.
+    """
     user_input = input("Tell me what program you want. Press Enter for a random one: ").strip()
     return user_input if user_input else random.choice(PROGRAMS_LIST)
 
@@ -118,6 +134,10 @@ def run_generated_code(code: str) -> tuple[bool, str]:
 
 
 def main():
+    """
+    Main flow: get program description, call OpenAI (up to 5 times with error feedback),
+    run generated code, format with Black, and save to code_generate.py.
+    """
     program = get_program()
     errors = []
     run_code = ""
@@ -193,6 +213,7 @@ def pause_if_frozen():
 
 
 if __name__ == "__main__":
+    # Run main; on .exe, pause so the user can read any error before the window closes.
     try:
         main()
     except SystemExit as e:
