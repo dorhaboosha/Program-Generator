@@ -182,7 +182,10 @@ def main():
         if ok:
             print(f"{Fore.GREEN}Code creation completed successfully!{Fore.RESET}")
 
-            formatted_code = black.format_file_contents(run_code, fast=False, mode=black.FileMode())
+            try:
+                formatted_code = black.format_file_contents(run_code, fast=False, mode=black.FileMode())
+            except black.NothingChanged:
+                formatted_code = run_code
             with open(file_name, "w", encoding="utf-8") as f:
                 f.write(formatted_code)
 
