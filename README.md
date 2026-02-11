@@ -1,4 +1,4 @@
-# Program Generator (Exercise 1 — Software Development Using AI)
+# Program Generator
 
 A **CLI tool that generates Python programs using the OpenAI API**, saves the generated code to a file, **runs it automatically**, and retries up to **5 times** if the generated code fails.
 
